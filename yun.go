@@ -1,32 +1,30 @@
 package yun
 
 import (
+	"fmt"
 	"net/http"
-	"sync"
 	"os"
 	"strconv"
-	"fmt"
 	"strings"
+	"sync"
 )
 
 type (
 	Engine struct {
-		middleware	[]HandlerFunc
-		pool        sync.Pool
+		middleware []HandlerFunc
+		pool       sync.Pool
 		router
-		maxPrefix	uint16
-		minPrefix	uint16
-		mode		Mode
+		maxPrefix uint16
+		minPrefix uint16
+		mode      Mode
 	}
-
-	HandlerFunc func(*Context)
 )
 
-func New(mode Mode) *Engine  {
+func New(mode Mode) *Engine {
 	eng := &Engine{}
 
 	eng.mode = mode
-	eng.pool.New = func() interface{}{
+	eng.pool.New = func() interface{} {
 		return &Context{}
 	}
 	eng.minPrefix = 9999
@@ -54,9 +52,11 @@ func (eng *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		c.setHandlers(hs)
 		c.Params = params
 		c.Next()
+	} else if req.Method == "OPTIONS" {
+		c.setHandlers(eng.middleware)
+		c.Next()
 	}
-
-/*	if !c.Written() {
+	/*	if !c.Written() {
 		p := req.URL.Path
 		if len(req.URL.RawQuery) > 0 {
 			p = p + "?" + req.URL.RawQuery
@@ -71,7 +71,7 @@ func (eng *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	eng.pool.Put(c)
 }
 
-func (eng *Engine) Run(addr ...string) (error) {
+func (eng *Engine) Run(addr ...string) error {
 	address := resolveAddress(addr)
 	eng.printDebugInfo("Listening and serving HTTP on %s\n", address)
 	err := http.ListenAndServe(address, eng)
@@ -79,14 +79,13 @@ func (eng *Engine) Run(addr ...string) (error) {
 }
 
 func (eng *Engine) Handle(path string) IRoute {
-	if path[len(path) -1] == '/' {
-		path = path[ : len(path) -1]
+	if len(path) > 1 && path[len(path)-1] == '/' {
+		path = path[:len(path)-1]
 	}
 
 	if strings.Index(path, "//") >= 0 {
 		panic("Wrong path format: '//' not allowed")
 	}
-
 
 	if path[0] != '/' {
 		path = "/" + path
@@ -132,14 +131,15 @@ func resolveAddress(addr []string) string {
 		}
 		//debugPrint("Environment variable PORT is undefined. Using port :8080 by default")
 		return ":8000"
-	case 1: {
-		_, err :=strconv.ParseUint(addr[0][1:], 10, 32)
-		if err != nil {
-			err = fmt.Errorf("Port number format error: %s", err)
-			panic(err)
+	case 1:
+		{
+			_, err := strconv.ParseUint(addr[0][1:], 10, 32)
+			if err != nil {
+				err = fmt.Errorf("Port number format error: %s", err)
+				panic(err)
+			}
+			return addr[0]
 		}
-		return addr[0]
-	}
 	default:
 		panic("too much parameters")
 	}
@@ -147,9 +147,9 @@ func resolveAddress(addr []string) string {
 
 //findStaticRoute: 查找静态路由
 func (eng *Engine) findStaticRoute(path, meth string) Handlers {
-	key := staticRouteKey {
+	key := staticRouteKey{
 		method: meth,
-		path: path,
+		path:   path,
 	}
 	if hs, has := eng.staticRoutes[key]; has {
 		return hs
@@ -163,19 +163,19 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 	pathLen := uint16(len(path))
 	levelNum := uint8(strings.Count(path, "/"))
 
-	for i := eng.minPrefix; i<= eng.maxPrefix; i++ {
+	for i := eng.minPrefix; i <= eng.maxPrefix; i++ {
 		if i > pathLen {
 			break
 		}
 
 		key := dynamicRouteKey{prefix: path[:int(i)], levels: levelNum, method: method}
-		rs, has := eng.dynamicRoutes[key];
+		rs, has := eng.dynamicRoutes[key]
 		if !has {
 			continue
 		}
 
 		for k, _ := range rs {
-			ppath := path[i + 1 : ]
+			ppath := path[i+1:]
 			node := rs[k].path
 			params := make(Params, rs[k].paramNum)
 			n, nextStart, match := 0, 0, true
@@ -183,21 +183,22 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 			for {
 				switch node.ntype {
 				case FIXED:
-					if len(ppath) != node.length && ppath[ : node.length] != node.path {
+					if len(ppath) != node.length && ppath[:node.length] != node.path {
 						match = false
 						break pathLoop
 					}
 					nextStart = node.length
 				case PARAM, CATCHAll:
 					end := 0
-					for len := len(ppath); end < len && ppath[end] != '/'; end++{}
-					param := Param{Key:node.path, Value: ppath[ : end]}
+					for len := len(ppath); end < len && ppath[end] != '/'; end++ {
+					}
+					param := Param{Key: node.path, Value: ppath[:end]}
 					params[n] = param
-					n ++
+					n++
 					nextStart = end
 				}
 				if node.next != nil {
-					ppath = ppath[nextStart + 1 : ]
+					ppath = ppath[nextStart+1:]
 					node = node.next
 				} else {
 					break

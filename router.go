@@ -13,43 +13,44 @@ type (
 	RouteType byte
 
 	IRoute interface {
-		Connect(...HandlerFunc) 	IRoute
-		Delete(...HandlerFunc) 	IRoute
-		Get(...HandlerFunc) 		IRoute
-		Head(...HandlerFunc) 		IRoute
-		Options(...HandlerFunc) 	IRoute
-		Patch(...HandlerFunc) 	IRoute
-		Post(...HandlerFunc) 		IRoute
-		Put(...HandlerFunc) 		IRoute
-		Trace(...HandlerFunc) 	IRoute
+		Connect(...HandlerFunc) IRoute
+		Delete(...HandlerFunc) IRoute
+		Get(...HandlerFunc) IRoute
+		Head(...HandlerFunc) IRoute
+		Options(...HandlerFunc) IRoute
+		Patch(...HandlerFunc) IRoute
+		Post(...HandlerFunc) IRoute
+		Put(...HandlerFunc) IRoute
+		Trace(...HandlerFunc) IRoute
+		Any(...HandlerFunc)
 	}
 
 	route struct {
-		path 	string
-		ruType 	routeType
-		engine 	*Engine
-		group	*Group
+		path   string
+		ruType routeType
+		engine *Engine
+		group  *Group
 	}
 
 	staticRouteKey struct {
 		method string
-		path string
+		path   string
 	}
 
 	dynamicRouteKey struct {
-		prefix		string
-		method 		string
-		levels  	uint8
+		prefix string
+		method string
+		levels uint8
 	}
 
 	dynamicRoute struct {
-		path		*node
-		paramNum	uint8
-		handlers	Handlers
+		path     *node
+		paramNum uint8
+		handlers Handlers
 	}
 
 	router struct {
-		staticRoutes map[staticRouteKey]Handlers
+		staticRoutes  map[staticRouteKey]Handlers
 		dynamicRoutes map[dynamicRouteKey][]*dynamicRoute
 	}
 )
@@ -70,14 +71,16 @@ const (
 )
 
 type routeType int
+
 const (
-	STATIC		routeType = iota
+	STATIC routeType = iota
 	DYNAMIC
 )
 
 type nodeType int
+
 const (
-	FIXED 		nodeType = iota
+	FIXED nodeType = iota
 	PARAM
 	CATCHAll
 )
@@ -141,6 +144,18 @@ func (r *route) Connect(handlers ...HandlerFunc) IRoute {
 	return r
 }
 
+func (r *route) Any(handlers ...HandlerFunc) {
+	r.handle(GET, handlers)
+	r.handle(POST, handlers)
+	r.handle(PUT, handlers)
+	r.handle(PATCH, handlers)
+	r.handle(HEAD, handlers)
+	r.handle(OPTIONS, handlers)
+	r.handle(DELETE, handlers)
+	r.handle(TRACE, handlers)
+	r.handle(CONNECT, handlers)
+}
+
 //handle: 处理路由
 func (r *route) handle(meth string, handlers Handlers) {
 	handlers = r.mergeHandlers(handlers)
@@ -151,7 +166,7 @@ func (r *route) handle(meth string, handlers Handlers) {
 		}
 
 		key := staticRouteKey{
-			path: r.path,
+			path:   r.path,
 			method: meth,
 		}
 
@@ -178,33 +193,33 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 
 	var (
 		nodeStart, nodeEnd int
-		levels uint8	//路径级数
-		nod *node
-		prefix string
-		nodType nodeType
+		levels             uint8 //路径级数
+		nod                *node
+		prefix             string
+		nodType            nodeType
 	)
 
 	for i, _ := range r.path {
-		switch r.path[i]{
+		switch r.path[i] {
 		case '/':
-			levels ++
+			levels++
 			nodeEnd = i
 			if nodType == PARAM || nodType == CATCHAll {
-				nod = addNode(nod, r.path[nodeStart + 2 : nodeEnd], nodType)
+				nod = addNode(nod, r.path[nodeStart+2:nodeEnd], nodType)
 				nodType = FIXED
 				nodeStart = i
 			}
 		case ':', '*':
-			if i - nodeEnd > 1 {
+			if i-nodeEnd > 1 {
 				panic(fmt.Sprintf("Path format error, '%c' must be next to '/'", r.path[i]))
 			}
 
-			ds.paramNum ++
+			ds.paramNum++
 
 			if nodeStart <= 0 {
 				prefix = r.path[:nodeEnd]
 			} else if nodeStart < nodeEnd {
-				nod = addNode(nod, r.path[nodeStart + 1 : nodeEnd], nodType)
+				nod = addNode(nod, r.path[nodeStart+1:nodeEnd], nodType)
 			}
 
 			if r.path[i] == ':' {
@@ -216,15 +231,15 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 			nodeStart = nodeEnd
 		}
 
-		if i >= len(r.path) - 1 {
+		if i >= len(r.path)-1 {
 			l := 1
 			if nodType == PARAM || nodType == CATCHAll {
 				l = 2
 			}
-			nod = addNode(nod, r.path[nodeStart + l : ], nodType)
+			nod = addNode(nod, r.path[nodeStart+l:], nodType)
 		}
 
-		if ds.path == nil && nod != nil{
+		if ds.path == nil && nod != nil {
 			ds.path = nod
 		}
 	}
@@ -242,7 +257,7 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 		r.engine.dynamicRoutes[key][0] = ds
 	}
 
-	preLen :=  uint16(len(prefix))
+	preLen := uint16(len(prefix))
 	if r.engine.maxPrefix < preLen {
 		r.engine.maxPrefix = preLen
 	}
@@ -262,9 +277,9 @@ func (r *route) mergeHandlers(handlers Handlers) Handlers {
 
 	copy(hs, r.engine.middleware)
 	if r.group != nil {
-		copy(hs[rootMiddleSize : ], r.group.middleware)
+		copy(hs[rootMiddleSize:], r.group.middleware)
 	}
-	copy(hs[rootMiddleSize + groupMiddleSize : ], handlers)
+	copy(hs[rootMiddleSize+groupMiddleSize:], handlers)
 
 	return hs
 }

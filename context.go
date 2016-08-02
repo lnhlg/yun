@@ -27,12 +27,6 @@ type (
 
 		keys     map[string]interface{}
 	}
-
-	Handler interface {
-		Handle(*Context)
-	}
-
-	Handlers []HandlerFunc
 )
 
 // MIME types
@@ -56,6 +50,7 @@ const (
 
 const (
 	charsetUTF8 = "charset=utf-8"
+	outside = 255
 )
 
 // Headers
@@ -298,6 +293,19 @@ func (c *Context)StringToBytes(s string) []byte {
 	strhead := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	byteshead := reflect.SliceHeader{strhead.Data, strhead.Len, 0}
 	return *(*[]byte)(unsafe.Pointer(&byteshead))
+}
+
+func (c *Context) IsAborted() bool {
+	return c.index >= outside
+}
+
+func (c *Context) Abort() {
+	c.index = outside
+}
+
+func (c *Context) AbortCode(code int) {
+	c.WriteHeader(code)
+	c.Abort()
 }
 
 func (c *Context) getForm(key string) (string, bool) {
