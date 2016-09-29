@@ -110,7 +110,7 @@ func (c *Context) Request() *http.Request {
 }
 
 func (c *Context) Response() http.ResponseWriter {
-	return c.tempwriter.ResponseWriter
+	return c.ResponseWriter
 }
 
 func (c *Context) Next() {
@@ -257,11 +257,26 @@ func (c *Context) Form(key string) string {
 	return ""
 }
 
-func (c *Context) FormInt(key string) (int, error) {
+func (c *Context) MustForm(key string) (string, error) {
+	if v, ok := c.getForm(key); ok {
+		return v, nil
+	}
+
+	return "", errors.New("Query Paramete \"" + key + "\" does not exist")
+}
+
+func (c *Context) FormInt(key string) int {
 	if v, ok := c.getForm(key); ok {
 		return strconv.Atoi(v)
 	}
-	return -1, errors.New("Query Paramete \"" + key + "\" does not exist")
+	return 0
+}
+
+func (c *Context) MustFormInt(key string) (int, error) {
+	if v, ok := c.getForm(key); ok {
+		return strconv.Atoi(v), nil
+	}
+	return 0, errors.New("Query Paramete \"" + key + "\" does not exist")
 }
 
 func (c *Context) Body() ([]byte, error) {
