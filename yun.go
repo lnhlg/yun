@@ -11,12 +11,18 @@ import (
 
 type (
 	Engine struct {
-		middleware []HandlerFunc
+		middlewares []HandlerFunc
 		pool       sync.Pool
-		router
-		maxPrefix uint16
-		minPrefix uint16
-		mode      Mode
+		router     router
+		mode       Mode
+	}
+
+	IGroup interface {
+		Use(...HandlerFunc)
+		Handle(string) IRoute
+		Group(string, ...HandlerFunc) *Group
+		Middlewares() []HandlerFunc
+		Up() IGroup
 	}
 )
 
@@ -27,7 +33,7 @@ func New(mode Mode) *Engine {
 	eng.pool.New = func() interface{} {
 		return &Context{}
 	}
-	eng.minPrefix = 9999
+	eng.router = router{minPrefix: 9999}
 
 	eng.printDebugInfo(`[WARNING] Running in "debug" mode. Switch to "release" mode in production.
  - using code:	yun.New(yun.RELEASE) or yun.SetMode(yun.RELEASE)
@@ -53,7 +59,7 @@ func (eng *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		c.Params = params
 		c.Next()
 	} else if req.Method == "OPTIONS" {
-		c.setHandlers(eng.middleware)
+		c.setHandlers(eng.middlewares)
 		c.Next()
 	}
 	/*	if !c.Written() {
@@ -100,19 +106,21 @@ func (eng *Engine) Handle(path string) IRoute {
 	}
 
 	r.path = path
-	r.engine = eng
+	r.router = &eng.router
+	r.group = eng
 
 	return r
 }
 
 func (eng *Engine) Use(middleware ...HandlerFunc) {
-	eng.middleware = append(eng.middleware, middleware...)
+	eng.middlewares = append(eng.middlewares, middleware...)
 }
 
 func (eng *Engine) Group(path string, middles ...HandlerFunc) *Group {
 	g := new(Group)
 	g.path = path
 	g.engine = eng
+	g.parentGr = eng
 	g.Use(middles...)
 
 	return g
@@ -120,6 +128,14 @@ func (eng *Engine) Group(path string, middles ...HandlerFunc) *Group {
 
 func (eng *Engine) SetMode(mode Mode) {
 	eng.mode = mode
+}
+
+func (eng *Engine) Middlewares() []HandlerFunc {
+	return eng.middlewares
+}
+
+func (eng *Engine) Up() IGroup {
+	return nil
 }
 
 func resolveAddress(addr []string) string {
@@ -151,7 +167,7 @@ func (eng *Engine) findStaticRoute(path, meth string) Handlers {
 		method: meth,
 		path:   path,
 	}
-	if hs, has := eng.staticRoutes[key]; has {
+	if hs, has := eng.router.staticRoutes[key]; has {
 		return hs
 	}
 
@@ -163,13 +179,13 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 	pathLen := uint16(len(path))
 	levelNum := uint8(strings.Count(path, "/"))
 
-	for i := eng.minPrefix; i <= eng.maxPrefix; i++ {
+	for i := eng.router.minPrefix; i <= eng.router.maxPrefix; i++ {
 		if i > pathLen {
 			break
 		}
 
 		key := dynamicRouteKey{prefix: path[:int(i)], levels: levelNum, method: method}
-		rs, has := eng.dynamicRoutes[key]
+		rs, has := eng.router.dynamicRoutes[key]
 		if !has {
 			continue
 		}
@@ -183,7 +199,8 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 			for {
 				switch node.ntype {
 				case FIXED:
-					if len(ppath) != node.length && ppath[:node.length] != node.path {
+					fmt.Println(len(ppath), node.length)
+					if len(ppath) != node.length || ppath[:node.length] != node.path {
 						match = false
 						break pathLoop
 					}

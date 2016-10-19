@@ -28,8 +28,8 @@ type (
 	route struct {
 		path   string
 		ruType routeType
-		engine *Engine
-		group  *Group
+		router *router
+		group  IGroup
 	}
 
 	staticRouteKey struct {
@@ -50,6 +50,9 @@ type (
 	}
 
 	router struct {
+		maxPrefix  uint16
+		minPrefix  uint16
+
 		staticRoutes  map[staticRouteKey]Handlers
 		dynamicRoutes map[dynamicRouteKey][]*dynamicRoute
 	}
@@ -161,8 +164,8 @@ func (r *route) handle(meth string, handlers Handlers) {
 	handlers = r.mergeHandlers(handlers)
 
 	if r.ruType == STATIC {
-		if r.engine.staticRoutes == nil {
-			r.engine.staticRoutes = make(map[staticRouteKey]Handlers)
+		if r.router.staticRoutes == nil {
+			r.router.staticRoutes = make(map[staticRouteKey]Handlers)
 		}
 
 		key := staticRouteKey{
@@ -171,11 +174,11 @@ func (r *route) handle(meth string, handlers Handlers) {
 		}
 
 		//路径冲突
-		if _, has := r.engine.staticRoutes[key]; has {
+		if _, has := r.router.staticRoutes[key]; has {
 			panic("This route already exists")
 		}
 
-		r.engine.staticRoutes[key] = handlers
+		r.router.staticRoutes[key] = handlers
 	} else {
 		r.dynamicHandle(meth, handlers)
 	}
@@ -183,8 +186,8 @@ func (r *route) handle(meth string, handlers Handlers) {
 
 //dynamicHandle: 处理动态路由
 func (r *route) dynamicHandle(meth string, handlers Handlers) {
-	if r.engine.dynamicRoutes == nil {
-		r.engine.dynamicRoutes = make(map[dynamicRouteKey][]*dynamicRoute)
+	if r.router.dynamicRoutes == nil {
+		r.router.dynamicRoutes = make(map[dynamicRouteKey][]*dynamicRoute)
 	}
 
 	//创建动态路由
@@ -249,37 +252,49 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 		method: meth,
 		levels: levels,
 	}
-	if rs, has := r.engine.dynamicRoutes[key]; has {
+	if rs, has := r.router.dynamicRoutes[key]; has {
 		rs = append(rs, ds)
-		r.engine.dynamicRoutes[key] = rs
+		r.router.dynamicRoutes[key] = rs
 	} else {
-		r.engine.dynamicRoutes[key] = make([]*dynamicRoute, 1)
-		r.engine.dynamicRoutes[key][0] = ds
+		r.router.dynamicRoutes[key] = make([]*dynamicRoute, 1)
+		r.router.dynamicRoutes[key][0] = ds
 	}
 
 	preLen := uint16(len(prefix))
-	if r.engine.maxPrefix < preLen {
-		r.engine.maxPrefix = preLen
+	if r.router.maxPrefix < preLen {
+		r.router.maxPrefix = preLen
 	}
-	if r.engine.minPrefix > preLen {
-		r.engine.minPrefix = preLen
+	if r.router.minPrefix > preLen {
+		r.router.minPrefix = preLen
 	}
 }
 
 func (r *route) mergeHandlers(handlers Handlers) Handlers {
-	rootMiddleSize := len(r.engine.middleware)
+	//中间件的长度
 	groupMiddleSize := 0
-	if r.group != nil {
-		groupMiddleSize = len(r.group.middleware)
+	tempGr := r.group
+	for tempGr != nil {
+		groupMiddleSize += len(tempGr.Middlewares())
+		tempGr = tempGr.Up()
 	}
-	size := rootMiddleSize + groupMiddleSize + len(handlers)
+
+	//总适配器长度
+	size := groupMiddleSize + len(handlers)
+
+	//开辟总适配器内存
 	hs := make(Handlers, size)
 
-	copy(hs, r.engine.middleware)
-	if r.group != nil {
-		copy(hs[rootMiddleSize:], r.group.middleware)
+	//合并组中间件
+	tempGr = r.group
+	tempSize := 0
+	for tempGr != nil {
+		copy(hs[tempSize:], tempGr.Middlewares())
+		tempSize += len(tempGr.Middlewares())
+		tempGr = tempGr.Up()
 	}
-	copy(hs[rootMiddleSize+groupMiddleSize:], handlers)
+
+	//完成全部合并
+	copy(hs[groupMiddleSize:], handlers)
 
 	return hs
 }
