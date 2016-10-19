@@ -199,8 +199,8 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 			for {
 				switch node.ntype {
 				case FIXED:
-					fmt.Println(len(ppath), node.length)
-					if len(ppath) != node.length || ppath[:node.length] != node.path {
+					pplen := len(ppath)
+					if pplen < node.length || pplen >= node.length && ppath[:node.length] != node.path {
 						match = false
 						break pathLoop
 					}
