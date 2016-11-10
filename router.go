@@ -10,8 +10,7 @@ import (
 )*/
 
 type (
-	RouteType byte
-
+	//IRoute 路由接口
 	IRoute interface {
 		Connect(...HandlerFunc) IRoute
 		Delete(...HandlerFunc) IRoute
@@ -50,8 +49,8 @@ type (
 	}
 
 	router struct {
-		maxPrefix  uint16
-		minPrefix  uint16
+		maxPrefix uint16
+		minPrefix uint16
 
 		staticRoutes  map[staticRouteKey]Handlers
 		dynamicRoutes map[dynamicRouteKey][]*dynamicRoute
@@ -76,16 +75,21 @@ const (
 type routeType int
 
 const (
-	STATIC routeType = iota
-	DYNAMIC
+	//sTATIC 静态路由
+	sTATIC routeType = iota
+	//dYNAMIC 动态路由
+	dYNAMIC
 )
 
 type nodeType int
 
 const (
-	FIXED nodeType = iota
-	PARAM
-	CATCHAll
+	//fIXED 固定节点
+	fIXED nodeType = iota
+	//pARAM 参数节点
+	pARAM
+	//cATCHAll 适配节点
+	cATCHAll
 )
 
 var (
@@ -163,7 +167,7 @@ func (r *route) Any(handlers ...HandlerFunc) {
 func (r *route) handle(meth string, handlers Handlers) {
 	handlers = r.mergeHandlers(handlers)
 
-	if r.ruType == STATIC {
+	if r.ruType == sTATIC {
 		if r.router.staticRoutes == nil {
 			r.router.staticRoutes = make(map[staticRouteKey]Handlers)
 		}
@@ -202,14 +206,14 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 		nodType            nodeType
 	)
 
-	for i, _ := range r.path {
+	for i := range r.path {
 		switch r.path[i] {
 		case '/':
 			levels++
 			nodeEnd = i
-			if nodType == PARAM || nodType == CATCHAll {
+			if nodType == pARAM || nodType == cATCHAll {
 				nod = addNode(nod, r.path[nodeStart+2:nodeEnd], nodType)
-				nodType = FIXED
+				nodType = fIXED
 				nodeStart = i
 			}
 		case ':', '*':
@@ -226,9 +230,9 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 			}
 
 			if r.path[i] == ':' {
-				nodType = PARAM
+				nodType = pARAM
 			} else {
-				nodType = CATCHAll
+				nodType = cATCHAll
 			}
 
 			nodeStart = nodeEnd
@@ -236,7 +240,7 @@ func (r *route) dynamicHandle(meth string, handlers Handlers) {
 
 		if i >= len(r.path)-1 {
 			l := 1
-			if nodType == PARAM || nodType == CATCHAll {
+			if nodType == pARAM || nodType == cATCHAll {
 				l = 2
 			}
 			nod = addNode(nod, r.path[nodeStart+l:], nodType)

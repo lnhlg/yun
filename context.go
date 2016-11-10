@@ -1,31 +1,33 @@
 package yun
 
 import (
-	"net/http"
-	"path/filepath"
-	"io"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
-	"mime"
-	"io/ioutil"
-	"strconv"
-	"bytes"
 	"errors"
+	"io"
+	"io/ioutil"
+	"log"
+	"mime"
+	"net/http"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"unsafe"
 )
 
 type (
+	//Context 请求、响应上下文
 	Context struct {
-		tempwriter	responseWriter
-		request 	*http.Request
+		tempwriter responseWriter
+		request    *http.Request
 		ResponseWriter
-		Params   	Params
-		handlers	Handlers
-		index		int16
-		hcount		int16
+		Params   Params
+		handlers Handlers
+		index    int16
+		hcount   int16
 
-		keys     map[string]interface{}
+		keys map[string]interface{}
 	}
 )
 
@@ -50,7 +52,7 @@ const (
 
 const (
 	charsetUTF8 = "charset=utf-8"
-	outside = 255
+	outside     = 255
 )
 
 // Headers
@@ -105,14 +107,17 @@ func (c *Context) reset(w http.ResponseWriter, req *http.Request) {
 	c.hcount = 0
 }
 
+//Request 获取请求
 func (c *Context) Request() *http.Request {
 	return c.request
 }
 
+//Response 获取响应
 func (c *Context) Response() http.ResponseWriter {
 	return c.ResponseWriter
 }
 
+//Next 执行下一handle
 func (c *Context) Next() {
 	c.index++
 	if c.index < c.hcount {
@@ -120,6 +125,10 @@ func (c *Context) Next() {
 	}
 }
 
+//HTML 响应为HTML
+//code 响应状态码
+//html html字符串
+//return 返回错误
 func (c *Context) HTML(code int, html string) (err error) {
 	c.Response().Header().Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	c.WriteHeader(code)
@@ -127,6 +136,10 @@ func (c *Context) HTML(code int, html string) (err error) {
 	return
 }
 
+//String 响应为字符串
+//code 响应状态码
+//s 字符串
+//return 返回错误
 func (c *Context) String(code int, s string) (err error) {
 	c.Response().Header().Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	c.WriteHeader(code)
@@ -134,6 +147,10 @@ func (c *Context) String(code int, s string) (err error) {
 	return
 }
 
+//JSON 响应为JSON
+//code 响应状态码
+//i 将要转换为JSON的对象
+//return 返回错误
 func (c *Context) JSON(code int, i interface{}) (err error) {
 	b, err := json.Marshal(i)
 
@@ -144,6 +161,7 @@ func (c *Context) JSON(code int, i interface{}) (err error) {
 	return c.JSONBlob(code, b)
 }
 
+//JSONBlob ...
 func (c *Context) JSONBlob(code int, b []byte) (err error) {
 	c.Response().Header().Set(HeaderContentType, MIMEApplicationJSONCharsetUTF8)
 	c.WriteHeader(code)
@@ -151,6 +169,7 @@ func (c *Context) JSONBlob(code int, b []byte) (err error) {
 	return
 }
 
+//JSONP ...
 func (c *Context) JSONP(code int, callback string, i interface{}) (err error) {
 	b, err := json.Marshal(i)
 	if err != nil {
@@ -168,6 +187,10 @@ func (c *Context) JSONP(code int, callback string, i interface{}) (err error) {
 	return
 }
 
+//XML 响应为XML
+//code 响应状态码
+//i 将要转换成XML的对象
+//return 返回错误
 func (c *Context) XML(code int, i interface{}) (err error) {
 	b, err := xml.Marshal(i)
 
@@ -178,6 +201,7 @@ func (c *Context) XML(code int, i interface{}) (err error) {
 	return c.XMLBlob(code, b)
 }
 
+//XMLBlob ...
 func (c *Context) XMLBlob(code int, b []byte) (err error) {
 	c.Response().Header().Set(HeaderContentType, MIMEApplicationXMLCharsetUTF8)
 	c.WriteHeader(code)
@@ -188,10 +212,16 @@ func (c *Context) XMLBlob(code int, b []byte) (err error) {
 	return
 }
 
+//File 文件服务器
+//file 文件的路径
 func (c *Context) File(file string) {
 	http.ServeFile(c.Response(), c.Request(), file)
 }
 
+//Attachment 响应附件
+//r 文件读取接口
+//name 文件名
+//return 返回错误
 func (c *Context) Attachment(r io.ReadSeeker, name string) (err error) {
 	c.Response().Header().Set(HeaderContentType, ContentTypeByExtension(name))
 	c.Response().Header().Set(HeaderContentDisposition, "attachment; filename="+name)
@@ -200,11 +230,15 @@ func (c *Context) Attachment(r io.ReadSeeker, name string) (err error) {
 	return
 }
 
+//NoContent 无内容响应
+//code 响应状态码
+//return 返回错误
 func (c *Context) NoContent(code int) error {
 	c.WriteHeader(code)
 	return nil
 }
 
+//ContentTypeByExtension ...
 func ContentTypeByExtension(name string) (t string) {
 	if t = mime.TypeByExtension(filepath.Ext(name)); t == "" {
 		t = MIMEOctetStream
@@ -212,6 +246,9 @@ func ContentTypeByExtension(name string) (t string) {
 	return
 }
 
+//Set 保存中间件
+//key 键值
+//value 中间件对象
 func (c *Context) Set(key string, value interface{}) {
 	if c.keys == nil {
 		c.keys = make(map[string]interface{})
@@ -220,6 +257,9 @@ func (c *Context) Set(key string, value interface{}) {
 	c.keys[key] = value
 }
 
+//Get 获取中间件
+//key 键值
+//return 返回中间件对象与是否取得成功标志
 func (c *Context) Get(key string) (value interface{}, exists bool) {
 	if c.keys != nil {
 		value, exists = c.keys[key]
@@ -227,6 +267,11 @@ func (c *Context) Get(key string) (value interface{}, exists bool) {
 	return
 }
 
+//Send 发送请求
+//method 请求方法
+//url 请求的地址
+//body 请求体
+//return 返回响应体、响应状态码、错误
 func (c *Context) Send(method, url string, body []byte) ([]byte, int, error) {
 	client := new(http.Client)
 	b := bytes.NewBuffer(body)
@@ -249,6 +294,9 @@ func (c *Context) Send(method, url string, body []byte) ([]byte, int, error) {
 	return res, resp.StatusCode, nil
 }
 
+//Form 获取字符串类型的非必须参数
+//key 参数名称
+//retrun 返回字符串值
 func (c *Context) Form(key string) string {
 	if v, ok := c.getForm(key); ok {
 		return v
@@ -257,6 +305,9 @@ func (c *Context) Form(key string) string {
 	return ""
 }
 
+//MustForm 获取字符串类型的参数
+//key 参数名称
+//return 返回字符串、错误
 func (c *Context) MustForm(key string) (string, error) {
 	if v, ok := c.getForm(key); ok {
 		return v, nil
@@ -265,20 +316,33 @@ func (c *Context) MustForm(key string) (string, error) {
 	return "", errors.New("Query Paramete \"" + key + "\" does not exist")
 }
 
-func (c *Context) FormInt(key string) int {
+//FormInt 获取int类型的非必须参数
+func (c *Context) FormInt(key string, defValue int) int {
 	if v, ok := c.getForm(key); ok {
-		return strconv.Atoi(v)
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+			return defValue
+		}
+		return n
 	}
-	return 0
+	return defValue
 }
 
+//MustFormInt 获取int类型的参数
 func (c *Context) MustFormInt(key string) (int, error) {
 	if v, ok := c.getForm(key); ok {
-		return strconv.Atoi(v), nil
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, err
+		}
+		return n, nil
 	}
 	return 0, errors.New("Query Paramete \"" + key + "\" does not exist")
 }
 
+//Body 获取响应体
+//return 响应内容的二进制数组、错误
 func (c *Context) Body() ([]byte, error) {
 	body, err := ioutil.ReadAll(c.Request().Body)
 	if err != nil {
@@ -289,7 +353,10 @@ func (c *Context) Body() ([]byte, error) {
 	return body, nil
 }
 
-func (c *Context) DecodeJson(obj interface{}) error {
+//DecodeJSON 将响应体解析成对象
+//obj 转换结果
+//return 返回错误
+func (c *Context) DecodeJSON(obj interface{}) error {
 	body, err := c.Body()
 	if err != nil {
 		return err
@@ -298,26 +365,37 @@ func (c *Context) DecodeJson(obj interface{}) error {
 	return json.Unmarshal(body, obj)
 }
 
-func (c *Context)BytesToString(b []byte) string {
+//BytesToString 将二进制数组转换成字符串
+//b 二进制数组
+//return 返回字符串
+func (c *Context) BytesToString(b []byte) string {
 	byteshead := (*reflect.SliceHeader)(unsafe.Pointer(&b))
 	strhead := reflect.StringHeader{byteshead.Data, byteshead.Len}
 	return *(*string)(unsafe.Pointer(&strhead))
 }
 
-func (c *Context)StringToBytes(s string) []byte {
+//StringToBytes 将字符串转换成二进制数组
+//s 将要被转换的字符串
+//return 返回二进制数组
+func (c *Context) StringToBytes(s string) []byte {
 	strhead := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	byteshead := reflect.SliceHeader{strhead.Data, strhead.Len, 0}
 	return *(*[]byte)(unsafe.Pointer(&byteshead))
 }
 
+//IsAborted 响应是否被中止
+//return
 func (c *Context) IsAborted() bool {
 	return c.index >= outside
 }
 
+//Abort 中止响应
 func (c *Context) Abort() {
 	c.index = outside
 }
 
+//AbortCode 以指定响应状态码中止响应
+//code 响应状态码
 func (c *Context) AbortCode(code int) {
 	c.WriteHeader(code)
 	c.Abort()

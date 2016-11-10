@@ -1,14 +1,15 @@
 package yun
 
 import (
-	"log"
 	"bytes"
+	"log"
 )
 
 func init() {
 	log.SetFlags(0)
 }
 
+//IsDebugging 是否调试模式
 func (eng *Engine) IsDebugging() bool {
 	return eng.mode == DEBUG
 }

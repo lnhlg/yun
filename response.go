@@ -1,10 +1,10 @@
 package yun
 
 import (
-	"net/http"
-	"net"
 	"bufio"
 	"fmt"
+	"net"
+	"net/http"
 )
 
 const (
@@ -12,6 +12,7 @@ const (
 )
 
 type (
+	//ResponseWriter 响应写接口
 	ResponseWriter interface {
 		http.ResponseWriter
 		http.Hijacker

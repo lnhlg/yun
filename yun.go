@@ -10,13 +10,15 @@ import (
 )
 
 type (
+	//Engine 框架引擎
 	Engine struct {
 		middlewares []HandlerFunc
-		pool       sync.Pool
-		router     router
-		mode       Mode
+		pool        sync.Pool
+		router      router
+		mode        Mode
 	}
 
+	//IGroup 路由组接口
 	IGroup interface {
 		Use(...HandlerFunc)
 		Handle(string) IRoute
@@ -26,6 +28,9 @@ type (
 	}
 )
 
+//New 新建框架引擎
+//mode 运行模式，可选DEBUG,TEST,RELEASE
+//return 返回框架引擎
 func New(mode Mode) *Engine {
 	eng := &Engine{}
 
@@ -77,6 +82,9 @@ func (eng *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	eng.pool.Put(c)
 }
 
+//Run 运行http服务
+//addr 服务地址
+//return 返回错误
 func (eng *Engine) Run(addr ...string) error {
 	address := resolveAddress(addr)
 	eng.printDebugInfo("Listening and serving HTTP on %s\n", address)
@@ -84,6 +92,9 @@ func (eng *Engine) Run(addr ...string) error {
 	return err
 }
 
+//Handle 路由
+//path 路由路径
+//return 路由接口
 func (eng *Engine) Handle(path string) IRoute {
 	if len(path) > 1 && path[len(path)-1] == '/' {
 		path = path[:len(path)-1]
@@ -100,9 +111,9 @@ func (eng *Engine) Handle(path string) IRoute {
 	r := new(route)
 
 	if strings.Index(path, ":") <= 0 && strings.Index(path, "*") <= 0 {
-		r.ruType = STATIC
+		r.ruType = sTATIC
 	} else {
-		r.ruType = DYNAMIC
+		r.ruType = dYNAMIC
 	}
 
 	r.path = path
@@ -112,10 +123,16 @@ func (eng *Engine) Handle(path string) IRoute {
 	return r
 }
 
+//Use 加入中间件
+//middleware 中间件handle
 func (eng *Engine) Use(middleware ...HandlerFunc) {
 	eng.middlewares = append(eng.middlewares, middleware...)
 }
 
+//Group 创建路由组
+//path 路由组路径
+//middles 中间件
+//return 路由组对象
 func (eng *Engine) Group(path string, middles ...HandlerFunc) *Group {
 	g := new(Group)
 	g.path = path
@@ -126,14 +143,20 @@ func (eng *Engine) Group(path string, middles ...HandlerFunc) *Group {
 	return g
 }
 
+//SetMode 设置运行模式
+//mode 运行模式，可选DEBUG,TEST,RELEASE
 func (eng *Engine) SetMode(mode Mode) {
 	eng.mode = mode
 }
 
+//Middlewares 获取中间件
+//return 中间件handles
 func (eng *Engine) Middlewares() []HandlerFunc {
 	return eng.middlewares
 }
 
+//Up 获取上层路由组
+//return 路由组接口
 func (eng *Engine) Up() IGroup {
 	return nil
 }
@@ -190,7 +213,7 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 			continue
 		}
 
-		for k, _ := range rs {
+		for k := range rs {
 			ppath := path[i+1:]
 			node := rs[k].path
 			params := make(Params, rs[k].paramNum)
@@ -198,14 +221,14 @@ func (eng *Engine) findDynamicRoute(path, method string) (Handlers, Params) {
 		pathLoop:
 			for {
 				switch node.ntype {
-				case FIXED:
+				case fIXED:
 					pplen := len(ppath)
 					if pplen < node.length || pplen >= node.length && ppath[:node.length] != node.path {
 						match = false
 						break pathLoop
 					}
 					nextStart = node.length
-				case PARAM, CATCHAll:
+				case pARAM, cATCHAll:
 					end := 0
 					for len := len(ppath); end < len && ppath[end] != '/'; end++ {
 					}
